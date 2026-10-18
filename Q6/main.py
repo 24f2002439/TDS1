@@ -17,6 +17,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"] # <--- THE FIX: Tell the browser it's safe to read this
 )
 
 # --- 2. THE BOUNCER (Rate Limiting Middleware) ---
@@ -34,13 +35,12 @@ async def rate_limiter(request: Request, call_next):
         history = [t for t in history if now - t < TIME_WINDOW]
         
         if len(history) >= MAX_REQUESTS:
-            # Custom responses in middleware bypass the main CORS setup.
-            # We must manually stamp the VIP pass on the 429 error, 
-            # or the grader's browser will block it!
             headers = {}
             origin = request.headers.get("origin")
             if origin in ALLOWED_ORIGINS:
                 headers["Access-Control-Allow-Origin"] = origin
+                # Safely expose the header on our custom error response too
+                headers["Access-Control-Expose-Headers"] = "X-Request-ID"
                 
             return Response(
                 content="Too Many Requests", 
