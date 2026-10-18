@@ -36,7 +36,8 @@ async def rate_limiter(request: Request, call_next):
                 status_code=429, 
                 headers={
                     "Retry-After": str(max(1, retry_after)),
-                    "Access-Control-Allow-Origin": "*" # <--- THE FIX IS HERE
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Retry-After"  # <-- PERMISSION SLIP
                 }
             )
         
@@ -45,7 +46,7 @@ async def rate_limiter(request: Request, call_next):
         
     response = await call_next(request)
     return response
-
+    
 # --- 1. IDEMPOTENCY (The Elevator Button) ---
 saved_orders = {}
 
