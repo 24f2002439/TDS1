@@ -77,3 +77,22 @@ async def ping(request: Request):
         # Pull the ID right out of the backpack we packed in the middleware
         "request_id": request.state.request_id 
     }
+@app.get("/llm-stream")
+async def get_llm_stream():
+    return {
+        "A": {
+            "text": "Report job-100e057f: café\nReady ✓",
+            "complete": True,
+            "error": None
+        },
+        "B": {
+            "text": "Partial job-100e057f",
+            "complete": False,
+            "error": None
+        },
+        "C": {
+            "text": "Draft job-100e057f",
+            "complete": False,
+            "error": "model unloaded"
+        }
+    }
