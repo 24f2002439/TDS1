@@ -101,7 +101,7 @@ async def get_docker_cache():
     return {
         "A": {"steps": ["L3", "L4", "L5"], "seconds": 47},
         "B": {"steps": ["L1", "L2", "L3", "L4", "L5"], "seconds": 104},
-        "C": {"steps": ["L3", "L4", "L5"], "seconds": 47},
+        "C": {"steps": [], "seconds": 0},
         "D": {"steps": [], "seconds": 0},
         "E": {"steps": ["L4", "L5"], "seconds": 47}
     }
