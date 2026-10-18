@@ -16,40 +16,46 @@ client = OpenAI(
   base_url="https://aipipe.org/openai/v1"
 )
 
+business_notes = ""
+
 # --- 2. FETCH AND STORE DATA ---
 def load_data_into_memory():
-    print("Fetching data from API...")
-    all_records = []
-    current_url = START_URL
+    global business_notes
+    print("1. Fetching API Directory Menu...")
+    root_response = requests.get(START_URL).json()
     
-    # Loop to handle pagination
-    while current_url:
-        response = requests.get(current_url).json()
+    # Save the rules so we can pass them to the AI later
+    notes_list = root_response.get("notes", [])
+    business_notes = "\n".join(notes_list)
+    print(f"Found business rules: {business_notes}")
+    
+    # The 'export' link is usually a shortcut to get all data at once without pagination!
+    export_url = root_response.get("links", {}).get("export")
+    
+    print(f"2. Fetching all data from {export_url}...")
+    export_data = requests.get(export_url).json()
+    
+    # Handle whatever shape the export data comes in
+    all_records = []
+    if isinstance(export_data, list):
+        all_records = export_data
+    elif isinstance(export_data, dict):
+        # Try common keys if it's a dictionary
+        all_records = export_data.get("data", export_data.get("records", []))
         
-        # IMPORTANT: Change "data" if your API uses a different word (like "records")
-        page_data = response.get("data", [])
-        all_records.extend(page_data)
-        
-        # IMPORTANT: Change "next" if your API uses a different word for the next page
-        next_path = response.get("next") 
-        
-        if next_path:
-            # If the next path is just '/page/2', we attach it to the base domain
-            current_url = "https://exam.sanand.workers.dev" + next_path
-        else:
-            break # No more pages!
-            
     print(f"Downloaded {len(all_records)} records.")
     
-    # Create an invisible, temporary SQLite database in the computer's RAM
+    if len(all_records) == 0:
+        print("CRITICAL ERROR: No records downloaded. Check the export URL format.")
+        return None, []
+        
+    # Create an invisible SQLite database
     conn = sqlite3.connect(':memory:', check_same_thread=False)
     columns = list(all_records[0].keys())
     
-    # Create a table dynamically based on the API's columns
     col_defs = ", ".join([f"{col} TEXT" for col in columns])
     conn.execute(f"CREATE TABLE ledger ({col_defs})")
     
-    # Insert all the records
     placeholders = ", ".join(["?" for _ in columns])
     insert_query = f"INSERT INTO ledger VALUES ({placeholders})"
     for record in all_records:
@@ -59,39 +65,44 @@ def load_data_into_memory():
     conn.commit()
     return conn, columns
 
-# Run the fetcher when the server starts
 db_conn, db_columns = load_data_into_memory()
 
 # --- 3. HANDLE THE GRADER'S QUESTIONS ---
 @app.route('/', methods=['POST'])
 def answer_question():
-    # Get the question from the grader's JSON
     user_question = request.json.get("question")
     
-    # Prompt the AI to act as a SQL translator
+    # We now inject the business rules directly into the AI's instructions!
     prompt = f"""
-    You are a data analyst. I have a SQLite table named 'ledger' with these columns: {db_columns}.
+    You are an expert data analyst. I have a SQLite table named 'ledger' with these columns: {db_columns}.
+    
+    CRITICAL BUSINESS RULES YOU MUST FOLLOW:
+    {business_notes}
+    
     Write a single SQL query to answer this exact question: "{user_question}".
     Return ONLY the raw SQL query. No markdown formatting, no explanation, no ```sql tags.
     If the answer is money, format it as a plain number rounded to 2 decimal places (e.g. 1500.50), no dollar signs.
     """
     
-    # Send to OpenAI
     ai_response = client.chat.completions.create(
-        model="gpt-4o-mini", # Fast and smart enough for SQL
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}]
     )
     
-    # Clean up the AI's response to ensure it's just raw SQL
     sql_query = ai_response.choices[0].message.content.strip().replace('```sql', '').replace('```', '')
-    print(f"Running SQL: {sql_query}")
+    print(f"AI generated SQL: {sql_query}")
     
-    # Execute the query on our in-memory database
     cursor = db_conn.cursor()
-    cursor.execute(sql_query)
-    result = cursor.fetchone()[0] # Get the top answer
-    
-    # Return the answer in the JSON format the grader expects
+    try:
+        cursor.execute(sql_query)
+        result = cursor.fetchone()[0]
+        # Ensure numbers are formatted nicely before sending back
+        if result is not None and not isinstance(result, str):
+            result = round(float(result), 2)
+    except Exception as e:
+        print(f"SQL Error: {e}")
+        result = "Error running query"
+        
     return jsonify({"answer": result})
 
 if __name__ == '__main__':
