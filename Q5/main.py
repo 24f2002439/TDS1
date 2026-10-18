@@ -26,26 +26,23 @@ async def rate_limiter(request: Request, call_next):
     
     if client_id:
         now = time.time()
-        # Get the client's past requests, or an empty list if they are new
         history = client_history.get(client_id, [])
-        
-        # Throw away requests that are older than our 10-second window
         history = [timestamp for timestamp in history if now - timestamp < TIME_WINDOW]
         
-        # If they have 15 or more recent requests, block them
         if len(history) >= MAX_REQUESTS:
             retry_after = int(TIME_WINDOW - (now - history[0]))
             return Response(
                 content="Too Many Requests", 
                 status_code=429, 
-                headers={"Retry-After": str(max(1, retry_after))}
+                headers={
+                    "Retry-After": str(max(1, retry_after)),
+                    "Access-Control-Allow-Origin": "*" # <--- THE FIX IS HERE
+                }
             )
         
-        # Otherwise, record this new request
         history.append(now)
         client_history[client_id] = history
         
-    # Proceed to the actual API endpoint
     response = await call_next(request)
     return response
 
