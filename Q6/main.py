@@ -8,7 +8,7 @@ app = FastAPI()
 # --- 1. THE VIP LIST (CORS Middleware) ---
 ALLOWED_ORIGINS = [
     "https://app-2kb4gq.example.com",
-    "https://exam.sanand.workers.dev/tds-2026-09-ga2" # <--- UPDATE THIS!
+    "https://exam.sanand.workers.dev" # <--- UPDATE THIS!
 ]
 
 app.add_middleware(
